@@ -38,8 +38,12 @@ enum MessageSend {
     @MainActor
     private static func send(chatID: String, text: String) async throws -> [String: String] {
         try Task.checkCancellation()
-        let prefix = "iMessage;-;"
-        guard chatID.hasPrefix(prefix), chatID.utf8.count <= 250 else {
+        // Messages can use either prefix for a direct chat. The prefix alone
+        // does not establish transport; the script checks the selected account.
+        let directPrefixes = ["iMessage;-;", "any;-;"]
+        guard chatID.utf8.count <= 250,
+            let prefix = directPrefixes.first(where: { chatID.hasPrefix($0) })
+        else {
             throw SendError.invalidInput
         }
         let recipient = String(chatID.dropFirst(prefix.count))
