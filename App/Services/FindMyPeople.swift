@@ -7,7 +7,6 @@ final class FindMyPeopleService: Service {
     static let toolName = "find_my_person"
     static let enabledKey = "findMyPeopleEnabled"
     static let personKey = "findMyPeopleApprovedName"
-    static let placesKey = "findMyPeopleApprovedPlaces"
 
     @MainActor private static var lookupInProgress = false
 
@@ -34,7 +33,6 @@ final class FindMyPeopleService: Service {
     private static func lookup(person: String) async throws -> [String: String] {
         let settings = UserDefaults.standard
         let approved = settings.string(forKey: personKey) ?? ""
-        let configuredPlaces = settings.string(forKey: placesKey) ?? ""
         let normalized = FindMyPeopleRows.normalizedName(person)
         guard isEnabled(settings),
             person.utf8.count <= 256, !normalized.isEmpty,
@@ -45,22 +43,15 @@ final class FindMyPeopleService: Service {
         lookupInProgress = true
         defer { lookupInProgress = false }
 
-        let places = Set(
-            configuredPlaces.split(whereSeparator: \.isNewline)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty && $0.count <= 80 }
-        )
-        let preview = try await readWindow(person: approved, places: places)
+        let preview = try await readWindow(person: approved)
         try Task.checkCancellation()
         guard isEnabled(settings),
-            settings.string(forKey: personKey) == approved,
-            (settings.string(forKey: placesKey) ?? "") == configuredPlaces
+            settings.string(forKey: personKey) == approved
         else { throw LookupError.notApproved }
         guard confirm(preview: preview) else { throw LookupError.cancelled }
         try Task.checkCancellation()
         guard isEnabled(settings),
             settings.string(forKey: personKey) == approved,
-            (settings.string(forKey: placesKey) ?? "") == configuredPlaces,
             CGPreflightScreenCaptureAccess()
         else { throw LookupError.notApproved }
         return preview.result
@@ -81,7 +72,7 @@ final class FindMyPeopleService: Service {
         let result: [String: String]
     }
 
-    private static func readWindow(person: String, places: Set<String>) async throws -> Preview {
+    private static func readWindow(person: String) async throws -> Preview {
         let image: CGImage
         let windowSize: CGSize
         do {
@@ -134,7 +125,7 @@ final class FindMyPeopleService: Service {
             }
             return [line(text, box: observation.boundingBox, size: windowSize, confidence: candidate.confidence)]
         }
-        guard let match = FindMyPeopleRows.match(lines: lines, person: person, places: places) else {
+        guard let match = FindMyPeopleRows.match(lines: lines, person: person) else {
             throw LookupError.row
         }
 

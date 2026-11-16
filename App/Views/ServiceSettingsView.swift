@@ -118,16 +118,13 @@ struct ServiceSettingsView: View {
 
 private struct FindMyPeopleSettings: View {
     @AppStorage(FindMyPeopleService.personKey) private var person = ""
-    @AppStorage(FindMyPeopleService.placesKey) private var places = ""
 
     var body: some View {
         Section {
             TextField("Exact Find My name", text: $person)
-            TextField("Approved place labels (one per line)", text: $places, axis: .vertical)
-                .lineLimit(2 ... 4)
         } footer: {
             Text(
-                "Supported labels are Home, Work, School, and Nearby. Enter only the labels you want to share. Open Find My on People with the entire row visible before requesting a lookup. Review the local preview before sharing."
+                "Open Find My on People with the entire row visible. Review the local preview before sharing. iMCP returns a coarse place and the displayed age when available."
             )
         }
     }

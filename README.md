@@ -743,16 +743,16 @@ readback using iMCP, look up the new note with `notes_fetch` and pass its
 ### Find My People prototype
 
 Enable **Find My People** separately in iMCP settings and enter one exact display
-name from Find My. Enter any of the supported labels you are willing to share,
-one per line (`Home`, `Work`, `School`, or `Nearby`). These must appear exactly as
-written in Find My. iMCP requires its own Screen Recording approval. Open the English-language Find My app to
-**People** and keep the approved row fully visible in an unlocked desktop session.
+name from Find My. iMCP requires its own Screen Recording approval. Open the
+English-language Find My app to **People** and keep the approved row fully
+visible in an unlocked desktop session.
 
 Call `find_my_person` with the exact approved name as `person`. iMCP captures one
 Find My window and reads the visible sidebar locally. Confirm the captured tab
-and row in the iMCP preview. The result can contain the approved label and
-Apple's displayed last-seen age. Other place text is withheld. A client may
-retain the result. iMCP does not save captures, recognized rows, or lookup history.
+and row in the iMCP preview. The result can contain a built-in label (Home, Work,
+School, or Nearby) or a U.S. city and state, plus Apple's displayed last-seen age.
+Address-like or unrecognized place text is withheld. A client may retain the
+result. iMCP does not save captures, recognized rows, or lookup history.
 
 The prototype uses manual tab selection and confirmation for every call. Use
 only synthetic data with unsigned debug builds.

@@ -7,7 +7,7 @@ final class FindMyPeopleRowsTests: XCTestCase {
         FindMyPeopleRowsTests.line("Items", x: 230, y: 65),
     ]
 
-    func testExactApprovedPlaceAndReportedAge() {
+    func testBuiltInPlaceAndReportedAge() {
         XCTAssertEqual(
             match(tabs + [Self.line("Test Person"), Self.line("Home • 4 min. ago", y: 121)]),
             ["status": "reported", "place": "Home", "lastSeen": "4 min. ago"]
@@ -17,18 +17,20 @@ final class FindMyPeopleRowsTests: XCTestCase {
     func testRawPlaceAndUnrecognizedAgeDoNotLeaveParser() {
         XCTAssertEqual(
             match(tabs + [Self.line("Test Person"), Self.line("456 Example St • Now", y: 121)]),
-            ["status": "place_not_approved", "lastSeen": "Now"]
+            ["status": "place_withheld", "lastSeen": "Now"]
         )
         XCTAssertNil(match(tabs + [Self.line("Test Person"), Self.line("Home • unknown status", y: 121)]))
     }
 
-    func testEvenConfiguredStreetAddressesAreWithheld() {
-        let result = FindMyPeopleRows.match(
-            lines: tabs + [Self.line("Test Person"), Self.line("456 Example St • Now", y: 121)],
-            person: "Test Person",
-            places: ["456 Example St"]
-        )?.result
-        XCTAssertEqual(result, ["status": "place_not_approved", "lastSeen": "Now"])
+    func testCityAndRegionAreReportedWithNativeSeparator() {
+        XCTAssertEqual(
+            match(tabs + [Self.line("Test Person"), Self.line("Springfield, IL · 3 hr. ago", y: 121)]),
+            ["status": "reported", "place": "Springfield, IL", "lastSeen": "3 hr. ago"]
+        )
+        XCTAssertEqual(
+            match(tabs + [Self.line("Test Person"), Self.line("Example Street, IL · Now", y: 121)]),
+            ["status": "place_withheld", "lastSeen": "Now"]
+        )
     }
 
     func testUnavailableHasNoPlaceOrAge() {
@@ -55,7 +57,7 @@ final class FindMyPeopleRowsTests: XCTestCase {
     }
 
     private func match(_ lines: [FindMyPeopleRows.Line]) -> [String: String]? {
-        FindMyPeopleRows.match(lines: lines, person: "Test Person", places: ["Home"])?.result
+        FindMyPeopleRows.match(lines: lines, person: "Test Person")?.result
     }
 
     private static func line(
