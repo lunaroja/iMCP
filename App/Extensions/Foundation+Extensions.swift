@@ -168,7 +168,8 @@ extension NSAppleScript {
     /// A task cancelled before its script starts runs nothing:
     /// cancellation is checked before the script is queued
     /// and again on the queue, after compiling and before any Apple event is sent.
-    /// A script that has started runs to the end.
+    /// A script that has started runs to the end. `beforeExecution` can reject
+    /// queued work when authorization changes before execution.
     ///
     /// - Returns: The result of the script.
     /// - Throws: ``ExecutionError`` when the script does not compile or fails,
@@ -176,7 +177,8 @@ extension NSAppleScript {
     static func execute(
         _ source: String,
         handler: String? = nil,
-        arguments: [String] = []
+        arguments: [String] = [],
+        beforeExecution: @escaping @Sendable () throws -> Void = {}
     ) async throws -> NSAppleEventDescriptor {
         try Task.checkCancellation()
         let isCancelled = OSAllocatedUnfairLock(initialState: false)
@@ -198,6 +200,12 @@ extension NSAppleScript {
                     // The last point before an Apple event can be sent.
                     if isCancelled.withLock({ $0 }) {
                         continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    do {
+                        try beforeExecution()
+                    } catch {
+                        continuation.resume(throwing: error)
                         return
                     }
                     let result: NSAppleEventDescriptor

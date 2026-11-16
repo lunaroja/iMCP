@@ -722,6 +722,24 @@ a Swift package for reading your Voice Memos library.
 It reads transcripts from both `.m4a` and `.qta` files,
 which keep them in different places.
 
+### Create Notes and Folders
+
+In **Settings → Notes**, enable **Create Note** or **Create Note Folder** to
+expose `notes_create` or `notes_folders_create`. Both tools default to off.
+On first use, macOS may ask to allow iMCP to control Notes. Manage that
+permission in **Privacy & Security → Automation**.
+
+Use the exact account name from `notes_folders`. For `notes_create`, pass
+the full `folderPath` as an array of names from the account root, plus a
+`title` and plain `text`. For `notes_folders_create`, pass a `name` and
+an optional `parentPath` for a nested folder. A missing or ambiguous
+destination aborts creation. Creation in shared folders is refused. Notes
+may sync new items according to the selected account's settings.
+
+Check Notes before retrying a request whose outcome is uncertain. For
+readback using iMCP, look up the new note with `notes_fetch` and pass its
+`@id` to `notes_read`. The creation receipt uses a separate Automation ID.
+
 ### Notes Database Access
 
 Apple doesn't provide public APIs for accessing your notes, either.
@@ -730,7 +748,7 @@ The Notes app keeps them in a SQLite database at
 Recent edits sit in its write-ahead log,
 so the Notes service asks you to open the `group.com.apple.notes` folder
 rather than the file alone.
-iMCP only reads the database; it never changes your notes.
+iMCP opens the database for reads. Optional creation tools use Notes Automation.
 
 Each note's contents are stored as a gzip-compressed protocol buffer:
 the text, followed by runs that give the formatting of each part of it.
