@@ -6,37 +6,47 @@ enum MessageSend {
 
     @MainActor private static var inProgress = false
 
-    static let tool = Tool(
-        name: toolName,
-        description:
-            "Send one text-only iMessage to an existing one-to-one conversation. Requires confirmation on this Mac for each send.",
-        inputSchema: .object(
-            properties: [
-                "chatId": .string(
-                    description: "An existing direct iMessage conversation @id from messages_fetch."
-                ),
-                "text": .string(description: "Exact text to send, up to 3,500 characters."),
-            ],
-            required: ["chatId", "text"],
-            additionalProperties: false
-        ),
-        annotations: .init(
-            title: "Send Confirmed iMessage",
-            readOnlyHint: false,
-            destructiveHint: true,
-            idempotentHint: false,
-            openWorldHint: true
-        )
-    ) { arguments in
-        guard arguments.count == 2,
-            let chatID = arguments["chatId"]?.stringValue,
-            let text = arguments["text"]?.stringValue
-        else { throw SendError.invalidInput }
-        return try await send(chatID: chatID, text: text)
+    typealias UnattendedAuthorization = @MainActor @Sendable () -> Bool
+
+    static let tool = makeTool()
+
+    static func makeTool(allowsUnattended: @escaping UnattendedAuthorization = { false }) -> Tool {
+        Tool(
+            name: toolName,
+            description:
+                "Send one text-only iMessage to an existing one-to-one conversation. Requires confirmation on this Mac unless this client has permission to send without it.",
+            inputSchema: .object(
+                properties: [
+                    "chatId": .string(
+                        description: "An existing direct iMessage conversation @id from messages_fetch."
+                    ),
+                    "text": .string(description: "Exact text to send, up to 3,500 characters."),
+                ],
+                required: ["chatId", "text"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Send iMessage",
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: false,
+                openWorldHint: true
+            )
+        ) { arguments in
+            guard arguments.count == 2,
+                let chatID = arguments["chatId"]?.stringValue,
+                let text = arguments["text"]?.stringValue
+            else { throw SendError.invalidInput }
+            return try await send(chatID: chatID, text: text, allowsUnattended: allowsUnattended)
+        }
     }
 
     @MainActor
-    private static func send(chatID: String, text: String) async throws -> [String: String] {
+    private static func send(
+        chatID: String,
+        text: String,
+        allowsUnattended: @escaping UnattendedAuthorization
+    ) async throws -> [String: String] {
         try Task.checkCancellation()
         // Messages can use either prefix for a direct chat. The prefix alone
         // does not establish transport; the script checks the selected account.
@@ -66,7 +76,10 @@ enum MessageSend {
         inProgress = true
         defer { inProgress = false }
 
-        guard confirm(recipient: recipient, text: text) else { throw SendError.cancelled }
+        let unattended = allowsUnattended()
+        if !unattended {
+            guard confirm(recipient: recipient, text: text) else { throw SendError.cancelled }
+        }
         try Task.checkCancellation()
         guard enabled else { throw SendError.disabled }
 
@@ -75,7 +88,16 @@ enum MessageSend {
             result = try await NSAppleScript.execute(
                 script,
                 handler: "sendConfirmedMessage",
-                arguments: [chatID, text]
+                arguments: [chatID, text],
+                beforeExecution: {
+                    guard enabled else { throw SendError.disabled }
+                    if unattended {
+                        // This runs on the script queue. Consult the live grant after
+                        // compilation, just before dispatch. The main actor awaits the script.
+                        let stillAllowed = DispatchQueue.main.sync { allowsUnattended() }
+                        guard stillAllowed else { throw SendError.authorizationChanged }
+                    }
+                }
             )
         } catch let error as NSAppleScript.ExecutionError {
             if error.number == Int(errAEEventNotPermitted) { throw SendError.permission }
@@ -146,7 +168,7 @@ enum MessageSend {
         """
 
     enum SendError: LocalizedError {
-        case invalidInput, disabled, busy, cancelled, permission, unavailableChat, uncertain
+        case invalidInput, disabled, busy, cancelled, authorizationChanged, permission, unavailableChat, uncertain
 
         var errorDescription: String? {
             switch self {
@@ -154,6 +176,7 @@ enum MessageSend {
             case .disabled: "iMessage sending is off in iMCP settings."
             case .busy: "An iMessage send is already awaiting confirmation or completion."
             case .cancelled: "The send was cancelled or its confirmation expired."
+            case .authorizationChanged: "Permission to send without confirmation was removed before sending."
             case .permission: "Allow iMCP to control Messages in Privacy & Security → Automation."
             case .unavailableChat: "The exact iMessage conversation is unavailable."
             case .uncertain: "Messages did not confirm acceptance. Check the conversation before retrying."

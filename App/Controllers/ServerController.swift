@@ -338,6 +338,16 @@ final class ServerController: ObservableObject {
         credentials.legacyTrustedNames
     }
 
+    var supportsUnattendedMessageSends: Bool {
+        KeychainClientRecordStorage.usesDataProtectionKeychain
+    }
+
+    func setUnattendedMessageSends(_ allowed: Bool, for client: ClientRecord) throws {
+        guard supportsUnattendedMessageSends else { return }
+        objectWillChange.send()
+        try credentials.setUnattendedMessageSends(allowed, for: client.id)
+    }
+
     /// Revokes the credential of a trusted client and closes its connections.
     func removeTrustedClient(_ record: ClientRecord) {
         objectWillChange.send()
@@ -619,6 +629,14 @@ final class ServerController: ObservableObject {
                 }
             }
 
+            await networkManager.setMessageSendAuthorization { [weak self] connectionID, presentedCredentialID in
+                guard let self, self.supportsUnattendedMessageSends else { return false }
+                return self.credentials.allowsUnattendedMessageSends(
+                    presentedCredentialID: presentedCredentialID,
+                    connectionID: connectionID,
+                    sessions: self.credentialSessions
+                )
+            }
             await self.networkManager.start()
             self.updateServerStatus("Running")
         }
@@ -794,14 +812,21 @@ actor MCPConnectionManager {
     private let connectionID: UUID
     private let server: MCP.Server
     private let transport: SocketTransport
+    private let presentedCredentialID: String?
     private let parentManager: ServerNetworkManager
     private let approvalGate = ConnectionApprovalGate()
     private var isStopping = false
 
     /// Creates a manager for a socket whose client passed the code-signing check.
     /// The manager owns `descriptor` and closes it when it stops.
-    init(connectionID: UUID, descriptor: Int32, parentManager: ServerNetworkManager) {
+    init(
+        connectionID: UUID,
+        descriptor: Int32,
+        presentedCredentialID: String?,
+        parentManager: ServerNetworkManager
+    ) {
         self.connectionID = connectionID
+        self.presentedCredentialID = presentedCredentialID
         self.parentManager = parentManager
         self.transport = SocketTransport(descriptor: descriptor)
 
@@ -871,6 +896,7 @@ actor MCPConnectionManager {
         await parentManager.registerHandlers(
             for: server,
             connectionID: connectionID,
+            presentedCredentialID: presentedCredentialID,
             gate: approvalGate
         )
     }
@@ -1007,6 +1033,8 @@ actor ServerNetworkManager {
     typealias ConnectionClosedHandler = @Sendable (UUID) async -> Void
     private var connectionClosedHandler: ConnectionClosedHandler?
 
+    private var messageSendAuthorization: (@MainActor @Sendable (UUID, String?) -> Bool)?
+
     private let services = ServiceRegistry.services
     private var serviceBindings: [String: Binding<Bool>] = [:]
     private var disabledTools: Set<String> = []
@@ -1014,6 +1042,10 @@ actor ServerNetworkManager {
 
     func isRunning() -> Bool {
         isRunningState
+    }
+
+    func setMessageSendAuthorization(_ handler: @escaping @MainActor @Sendable (UUID, String?) -> Bool) {
+        messageSendAuthorization = handler
     }
 
     func setConnectionClosedHandler(_ handler: @escaping ConnectionClosedHandler) {
@@ -1190,6 +1222,7 @@ actor ServerNetworkManager {
         let connectionManager = MCPConnectionManager(
             connectionID: connectionID,
             descriptor: descriptor,
+            presentedCredentialID: hello.credential.flatMap(ClientCredential.identifier(for:)),
             parentManager: self
         )
 
@@ -1302,8 +1335,14 @@ actor ServerNetworkManager {
     func registerHandlers(
         for server: MCP.Server,
         connectionID: UUID,
+        presentedCredentialID: String?,
         gate: ConnectionApprovalGate
     ) async {
+        let authorize = messageSendAuthorization
+        let messageSend = MessageSend.makeTool {
+            authorize?(connectionID, presentedCredentialID) == true
+        }
+
         await server.withApprovedMethodHandler(ListPrompts.self, gate: gate) { _ in
             log.debug("Handling ListPrompts request for \(connectionID)")
             return ListPrompts.Result(prompts: [])
@@ -1399,12 +1438,14 @@ actor ServerNetworkManager {
                     isServiceEnabled
                 {
                     do {
-                        guard
-                            let value = try await service.call(
-                                tool: params.name,
-                                with: params.arguments ?? [:]
-                            )
-                        else {
+                        let arguments = params.arguments ?? [:]
+                        let result: Value?
+                        if params.name == MessageSend.toolName, service is MessageService {
+                            result = try await messageSend(arguments)
+                        } else {
+                            result = try await service.call(tool: params.name, with: arguments)
+                        }
+                        guard let value = result else {
                             continue
                         }
 

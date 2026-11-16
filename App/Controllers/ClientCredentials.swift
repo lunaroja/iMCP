@@ -104,6 +104,9 @@ struct ClientRecord: Codable, Equatable, Identifiable, Sendable {
     /// iMCP issues an untrusted credential when it writes a client's settings,
     /// so that the first approval can apply to that credential.
     var isTrusted: Bool
+    /// Only an explicit grant skips the native iMessage confirmation.
+    /// Older Keychain records omit this field and continue requiring confirmation.
+    var allowsUnattendedMessageSends: Bool? = nil
 }
 
 /// Persistent storage for ``ClientRecord`` values.
@@ -349,6 +352,27 @@ final class ClientCredentialStore {
         record.isTrusted = true
         try storage.save(record)
         records[id] = record
+    }
+
+    /// Changes the send grant independently of trust for connecting.
+    func setUnattendedMessageSends(_ allowed: Bool, for id: String) throws {
+        guard var record = records[id], record.isTrusted else { return }
+        record.allowsUnattendedMessageSends = allowed ? true : nil
+        try storage.save(record)
+        records[id] = record
+    }
+
+    /// Checks the current grant for the credential actually presented on this connection.
+    func allowsUnattendedMessageSends(
+        presentedCredentialID: String?,
+        connectionID: UUID,
+        sessions: CredentialSessions
+    ) -> Bool {
+        guard let id = presentedCredentialID,
+            sessions.connections[id]?.contains(connectionID) == true,
+            let record = records[id], record.isTrusted
+        else { return false }
+        return record.allowsUnattendedMessageSends == true
     }
 
     /// Deletes the record with `id`, so that its credential stops working.

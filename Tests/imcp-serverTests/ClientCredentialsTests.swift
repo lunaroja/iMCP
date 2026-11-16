@@ -105,6 +105,80 @@ final class ClientCredentialsTests: XCTestCase {
         XCTAssertEqual(store.trustedRecords, [record])
     }
 
+    func testOlderClientRecordStillRequiresSendConfirmation() throws {
+        let data = Data(
+            """
+            {"id":"legacy-id","name":"Synthetic client","issuedAt":0,"isTrusted":true}
+            """.utf8
+        )
+        let record = try JSONDecoder().decode(ClientRecord.self, from: data)
+        storage.records[record.id] = record
+        let connection = UUID()
+        var sessions = CredentialSessions()
+        sessions.add(connection, credentialID: record.id)
+
+        XCTAssertTrue(record.isTrusted)
+        XCTAssertFalse(
+            makeStore().allowsUnattendedMessageSends(
+                presentedCredentialID: record.id,
+                connectionID: connection,
+                sessions: sessions
+            )
+        )
+    }
+
+    func testUnattendedSendsRequireTheSelectedCredentialOnTheConnection() throws {
+        let store = makeStore()
+        let (_, selected) = try store.issue(name: "Same name", trusted: true)
+        let (_, other) = try store.issue(name: "Same name", trusted: true)
+        let (_, untrusted) = try store.issue(name: "Same name", trusted: false)
+        let selectedConnection = UUID()
+        let otherConnection = UUID()
+        let untrustedConnection = UUID()
+        let enrollmentConnection = UUID()
+        var sessions = CredentialSessions()
+        sessions.add(selectedConnection, credentialID: selected.id)
+        sessions.add(otherConnection, credentialID: other.id)
+        sessions.add(untrustedConnection, credentialID: untrusted.id)
+        // A client that was just issued a credential has a session for revocation,
+        // but it did not present that credential at connection setup.
+        sessions.add(enrollmentConnection, credentialID: selected.id)
+
+        XCTAssertFalse(
+            store.allowsUnattendedMessageSends(
+                presentedCredentialID: selected.id,
+                connectionID: selectedConnection,
+                sessions: sessions
+            )
+        )
+
+        try store.setUnattendedMessageSends(true, for: selected.id)
+        try store.setUnattendedMessageSends(true, for: untrusted.id)
+        store.reload()
+
+        func allowed(_ id: String?, on connection: UUID) -> Bool {
+            store.allowsUnattendedMessageSends(presentedCredentialID: id, connectionID: connection, sessions: sessions)
+        }
+        XCTAssertTrue(allowed(selected.id, on: selectedConnection))
+        XCTAssertFalse(allowed(other.id, on: otherConnection))
+        XCTAssertFalse(allowed(selected.id, on: otherConnection))
+        XCTAssertFalse(allowed(untrusted.id, on: untrustedConnection))
+        XCTAssertFalse(allowed(nil, on: enrollmentConnection))
+        XCTAssertFalse(allowed("unknown", on: selectedConnection))
+
+        try store.setUnattendedMessageSends(false, for: selected.id)
+        store.reload()
+        XCTAssertFalse(allowed(selected.id, on: selectedConnection))
+        XCTAssertEqual(store.records[selected.id]?.isTrusted, true)
+
+        try store.setUnattendedMessageSends(true, for: selected.id)
+        try store.revoke(id: selected.id)
+        // Even before the open connection is closed, its grant is gone.
+        XCTAssertFalse(allowed(selected.id, on: selectedConnection))
+        try store.setUnattendedMessageSends(true, for: selected.id)
+        XCTAssertNil(store.records[selected.id])
+    }
+
     func testStorageKeepsOnlyTheCredentialHash() throws {
         let store = makeStore()
         let (credential, record) = try store.issue(name: "Client", trusted: true)

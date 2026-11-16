@@ -633,15 +633,28 @@ For this project, we created what became
 for Model Context Protocol servers and clients.
 The app uses this package to handle proxied requests from MCP clients.
 
-### Confirmed iMessage sending
+### iMessage sending
 
-In **Settings → Messages**, enable **Send Confirmed iMessage** to expose
+In **Settings → Messages**, enable **Send iMessage** to expose
 `messages_send`. It defaults to off. The tool takes the `chatId` of an
 existing one-to-one iMessage conversation and the exact plain text to send.
-Each request opens a native confirmation with the recipient handle and full
-message. Cancelled or expired confirmations do not contact Messages.
+By default, iMCP shows the recipient handle and full text for you to confirm.
+Cancelled or expired confirmations never reach Messages.
 
-On the first approved send, macOS may ask to allow iMCP to control Messages.
+Trusting a client lets it connect without prompting. To grant it unattended
+sending as well, open **Settings → Clients** and turn on **Allow iMessage sends
+without confirmation** for that client. A connection must present the selected
+client's credential to use the grant. Anyone with that credential and access
+through the local iMCP CLI can exercise the same grant.
+
+Turn the client setting off to restore previews. Removing the trusted client
+revokes its credential and the grant together. **Send iMessage** remains the
+off switch for every client. These changes apply to subsequent sends, including
+requests still waiting to start Messages automation. Once automation starts, a
+send can complete. Unattended sending requires the protected Keychain used by
+signed builds.
+
+On the first send, macOS may ask to allow iMCP to control Messages.
 Manage that permission in **Privacy & Security → Automation**. Message
 history reads use the separate Messages folder grant. The tool checks that the
 exact conversation uses an iMessage account. A successful reply means Messages

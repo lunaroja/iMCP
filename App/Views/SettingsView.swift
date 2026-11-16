@@ -191,6 +191,7 @@ struct GeneralSettingsView: View {
 struct ClientsSettingsView: View {
     @ObservedObject var serverController: ServerController
     @State private var isConfirmingRemoveAll = false
+    @State private var isShowingSendGrantError = false
 
     private let serverCommand = Bundle.main.bundleURL
         .appendingPathComponent("Contents/MacOS/imcp-server")
@@ -238,13 +239,31 @@ struct ClientsSettingsView: View {
                     .padding(.vertical, 8)
                 } else {
                     ForEach(trustedClients) { client in
-                        LabeledContent {
-                            Button("Remove") {
-                                serverController.removeTrustedClient(client)
+                        VStack(alignment: .leading, spacing: 8) {
+                            LabeledContent {
+                                Button("Remove") {
+                                    serverController.removeTrustedClient(client)
+                                }
+                            } label: {
+                                Text(client.name)
+                                Text("Trusted since \(client.issuedAt.formatted(date: .abbreviated, time: .shortened))")
                             }
-                        } label: {
-                            Text(client.name)
-                            Text("Trusted since \(client.issuedAt.formatted(date: .abbreviated, time: .omitted))")
+                            if serverController.supportsUnattendedMessageSends {
+                                Toggle(
+                                    "Allow iMessage sends without confirmation",
+                                    isOn: Binding(
+                                        get: { client.allowsUnattendedMessageSends == true },
+                                        set: { allowed in
+                                            do {
+                                                try serverController.setUnattendedMessageSends(allowed, for: client)
+                                            } catch {
+                                                isShowingSendGrantError = true
+                                            }
+                                        }
+                                    )
+                                )
+                                .accessibilityLabel("Allow iMessage sends without confirmation for \(client.name)")
+                            }
                         }
                     }
                 }
@@ -256,6 +275,13 @@ struct ClientsSettingsView: View {
                         "Trusted clients connect without an approval dialog, and iMCP shows a notification whenever one connects. Each trusted client presents a credential that iMCP created for it, in the \(ClientCredential.environmentVariable) environment variable of its MCP settings. Removing a client revokes its credential."
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if !trustedClients.isEmpty && serverController.supportsUnattendedMessageSends {
+                        Text(
+                            "Allowing sends without confirmation lets that client send to existing direct iMessage chats whenever sending is enabled in Messages settings."
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                     if !trustedClients.isEmpty || !legacyTrustedClientNames.isEmpty {
                         Button("Remove All…") {
@@ -286,6 +312,11 @@ struct ClientsSettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Clients")
+        .alert("Couldn’t Change iMessage Permission", isPresented: $isShowingSendGrantError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("iMCP couldn’t update the client’s permission in Keychain.")
+        }
         .alert("Remove All Trusted Clients?", isPresented: $isConfirmingRemoveAll) {
             Button("Remove All", role: .destructive) {
                 serverController.resetTrustedClients()
