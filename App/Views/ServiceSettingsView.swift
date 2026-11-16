@@ -8,6 +8,7 @@ struct ServiceSettingsView: View {
 
     var body: some View {
         let isOn = config.binding.wrappedValue
+        let canConfigureTools = isOn || config.service is MessageService
 
         Form {
             Section {
@@ -61,10 +62,9 @@ struct ServiceSettingsView: View {
                     }
                     .controlSize(.mini)
                     .help(tool.description)
-                    // While the service is off, its tools keep their own settings,
-                    // but a disabled switch alone still looks on, so dim the whole row.
-                    .disabled(!isOn)
-                    .opacity(isOn ? 1 : 0.5)
+                    // Messages tools can be configured first so send-only setup can skip the database grant.
+                    .disabled(!canConfigureTools)
+                    .opacity(canConfigureTools ? 1 : 0.5)
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 2) {

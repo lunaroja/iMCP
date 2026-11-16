@@ -638,6 +638,8 @@ The app uses this package to handle proxied requests from MCP clients.
 In **Settings → Messages**, enable **Send iMessage** to expose
 `messages_send`. It defaults to off. The tool takes the `chatId` of an
 existing one-to-one iMessage conversation and the exact plain text to send.
+For send-only access, turn off both read tools before turning on the Messages
+service. Sending uses the macOS Messages Automation permission.
 By default, iMCP shows the recipient handle and full text for you to confirm.
 Cancelled or expired confirmations never reach Messages.
 

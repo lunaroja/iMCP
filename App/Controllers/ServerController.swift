@@ -163,7 +163,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Messages",
-                summary: "Read message history and attachments, or send a confirmed iMessage.",
+                summary: "Read message history and attachments, or send an iMessage.",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
@@ -448,8 +448,13 @@ final class ServerController: ObservableObject {
         objectWillChange.send()
         config.binding.wrappedValue = enabled
 
+        // Sending uses Apple Events. Only the Messages read tools need the database grant.
+        let requiresActivation =
+            !(config.service is MessageService)
+            || config.service.tools.contains { $0.name != MessageSend.toolName && isToolEnabled($0.name) }
+
         Task {
-            if enabled, await !config.isActivated {
+            if enabled, requiresActivation, await !config.isActivated {
                 do {
                     if config.service is HomeService {
                         if try await !HomeService.shared.activateAskingUser() {
