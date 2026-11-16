@@ -80,11 +80,12 @@ final class FindMyPeopleService: Service {
             let windows = content.windows.filter {
                 $0.owningApplication?.bundleIdentifier == "com.apple.findmy"
                     && $0.isOnScreen && $0.windowLayer == 0
+                    && (320 ... 8192).contains($0.frame.width)
+                    && (220 ... 8192).contains($0.frame.height)
             }
-            guard windows.count == 1, let window = windows.first,
-                (320 ... 8192).contains(window.frame.width),
-                (220 ... 8192).contains(window.frame.height)
-            else { throw LookupError.window }
+            guard windows.count == 1, let window = windows.first else {
+                throw LookupError.window
+            }
             windowSize = window.frame.size
             let configuration = SCStreamConfiguration()
             let scale = min(2, 3072 / windowSize.width, 2304 / windowSize.height)
