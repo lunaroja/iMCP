@@ -79,6 +79,12 @@ final class CaptureService: NSObject, Service {
         }
     }
 
+    static func captureImage(filter: SCContentFilter, configuration: SCStreamConfiguration)
+        async throws -> CGImage
+    {
+        try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    }
+
     private func requestScreenRecordingPermission() async throws {
         guard CGPreflightScreenCaptureAccess() else {
             // Request screen recording access
@@ -598,8 +604,8 @@ final class CaptureService: NSObject, Service {
                 Task {
                     do {
                         // Use SCScreenshotManager for taking screenshots
-                        let image = try await SCScreenshotManager.captureImage(
-                            contentFilter: contentFilter,
+                        let image = try await Self.captureImage(
+                            filter: contentFilter,
                             configuration: streamConfiguration
                         )
 
