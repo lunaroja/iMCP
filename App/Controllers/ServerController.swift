@@ -153,7 +153,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Messages",
-                summary: "Read your message history with specific people, including attachments.",
+                summary: "Read message history and attachments, or send a confirmed iMessage.",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
@@ -383,7 +383,11 @@ final class ServerController: ObservableObject {
     // MARK: - Disabled Tools Management
     var disabledTools: Set<String> {
         get {
-            (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            var tools = (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            if !UserDefaults.standard.bool(forKey: MessageSend.enabledKey) {
+                tools.insert(MessageSend.toolName)
+            }
+            return tools
         }
         set {
             objectWillChange.send()
@@ -404,6 +408,9 @@ final class ServerController: ObservableObject {
             tools.remove(name)
         } else {
             tools.insert(name)
+        }
+        if name == MessageSend.toolName {
+            UserDefaults.standard.set(enabled, forKey: MessageSend.enabledKey)
         }
         disabledTools = tools
     }

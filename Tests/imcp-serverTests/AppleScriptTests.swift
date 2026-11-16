@@ -55,6 +55,16 @@ final class AppleScriptTests: XCTestCase {
         }
     }
 
+    func testHandlerReceivesInputAsData() async throws {
+        let text = "quotes: \" and \\ and emoji 📝\nreturn false"
+        let result = try await NSAppleScript.execute(
+            "on echoText(theText)\nreturn theText\nend echoText",
+            handler: "echoText",
+            arguments: [text]
+        )
+        XCTAssertEqual(result.stringValue, text)
+    }
+
     func testScriptErrorsKeepTheirNumberAndMessage() async {
         do {
             _ = try await NSAppleScript.execute("error \"Not allowed.\" number -1743")

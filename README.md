@@ -633,6 +633,20 @@ For this project, we created what became
 for Model Context Protocol servers and clients.
 The app uses this package to handle proxied requests from MCP clients.
 
+### Confirmed iMessage sending
+
+In **Settings → Messages**, enable **Send Confirmed iMessage** to expose
+`messages_send`. It defaults to off. The tool takes the `chatId` of an
+existing one-to-one iMessage conversation and the exact plain text to send.
+Each request opens a native confirmation with the recipient handle and full
+message. Cancelled or expired confirmations do not contact Messages.
+
+On the first approved send, macOS may ask to allow iMCP to control Messages.
+Manage that permission in **Privacy & Security → Automation**. Message
+history reads use the separate Messages folder grant. The tool checks that the
+exact conversation uses an iMessage account. A successful reply means Messages
+accepted the request. Verify the conversation before retrying an uncertain send.
+
 ### iMessage Database Access
 
 Apple doesn't provide public APIs for accessing your messages.

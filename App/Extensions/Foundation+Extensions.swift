@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 import os
 
@@ -172,7 +173,11 @@ extension NSAppleScript {
     /// - Returns: The result of the script.
     /// - Throws: ``ExecutionError`` when the script does not compile or fails,
     ///   or `CancellationError` when the task is cancelled before the script starts.
-    static func execute(_ source: String) async throws -> NSAppleEventDescriptor {
+    static func execute(
+        _ source: String,
+        handler: String? = nil,
+        arguments: [String] = []
+    ) async throws -> NSAppleEventDescriptor {
         try Task.checkCancellation()
         let isCancelled = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
@@ -195,7 +200,28 @@ extension NSAppleScript {
                         continuation.resume(throwing: CancellationError())
                         return
                     }
-                    let result = script.executeAndReturnError(&errorInfo)
+                    let result: NSAppleEventDescriptor
+                    if let handler {
+                        let parameters = NSAppleEventDescriptor.list()
+                        for (index, argument) in arguments.enumerated() {
+                            parameters.insert(NSAppleEventDescriptor(string: argument), at: index + 1)
+                        }
+                        let event = NSAppleEventDescriptor(
+                            eventClass: AEEventClass(kASAppleScriptSuite),
+                            eventID: AEEventID(kASSubroutineEvent),
+                            targetDescriptor: nil,
+                            returnID: AEReturnID(kAutoGenerateReturnID),
+                            transactionID: AETransactionID(kAnyTransactionID)
+                        )
+                        event.setParam(
+                            NSAppleEventDescriptor(string: handler),
+                            forKeyword: AEKeyword(keyASSubroutineName)
+                        )
+                        event.setParam(parameters, forKeyword: AEKeyword(keyDirectObject))
+                        result = script.executeAppleEvent(event, error: &errorInfo)
+                    } else {
+                        result = script.executeAndReturnError(&errorInfo)
+                    }
                     if errorInfo != nil {
                         continuation.resume(throwing: ExecutionError(errorInfo: errorInfo))
                     } else {

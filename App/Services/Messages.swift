@@ -403,6 +403,7 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
             }
             return try self.readAttachment(id: id, maxBytes: maxBytes)
         }
+        MessageSend.tool
     }
 
     /// The attachments of the given messages (by guid), keyed by message guid, in chat.db
