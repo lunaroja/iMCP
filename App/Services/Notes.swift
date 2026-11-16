@@ -240,6 +240,8 @@ final class NotesService: NSObject, Service, NSOpenSavePanelDelegate {
             object["text"] = .string(isMarkdown ? content.markdown() : content.plainText())
             return object
         }
+        NotesCreation.noteTool
+        NotesCreation.folderTool
     }
 
     // MARK: - Database Access

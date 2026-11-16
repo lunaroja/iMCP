@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 import os
 
@@ -167,12 +168,18 @@ extension NSAppleScript {
     /// A task cancelled before its script starts runs nothing:
     /// cancellation is checked before the script is queued
     /// and again on the queue, after compiling and before any Apple event is sent.
-    /// A script that has started runs to the end.
+    /// A script that has started runs to the end. `beforeExecution` can reject
+    /// queued work when authorization changes before execution.
     ///
     /// - Returns: The result of the script.
     /// - Throws: ``ExecutionError`` when the script does not compile or fails,
     ///   or `CancellationError` when the task is cancelled before the script starts.
-    static func execute(_ source: String) async throws -> NSAppleEventDescriptor {
+    static func execute(
+        _ source: String,
+        handler: String? = nil,
+        arguments: [String] = [],
+        beforeExecution: @escaping @Sendable () throws -> Void = {}
+    ) async throws -> NSAppleEventDescriptor {
         try Task.checkCancellation()
         let isCancelled = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
@@ -195,7 +202,34 @@ extension NSAppleScript {
                         continuation.resume(throwing: CancellationError())
                         return
                     }
-                    let result = script.executeAndReturnError(&errorInfo)
+                    do {
+                        try beforeExecution()
+                    } catch {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    let result: NSAppleEventDescriptor
+                    if let handler {
+                        let parameters = NSAppleEventDescriptor.list()
+                        for (index, argument) in arguments.enumerated() {
+                            parameters.insert(NSAppleEventDescriptor(string: argument), at: index + 1)
+                        }
+                        let event = NSAppleEventDescriptor(
+                            eventClass: AEEventClass(kASAppleScriptSuite),
+                            eventID: AEEventID(kASSubroutineEvent),
+                            targetDescriptor: nil,
+                            returnID: AEReturnID(kAutoGenerateReturnID),
+                            transactionID: AETransactionID(kAnyTransactionID)
+                        )
+                        event.setParam(
+                            NSAppleEventDescriptor(string: handler),
+                            forKeyword: AEKeyword(keyASSubroutineName)
+                        )
+                        event.setParam(parameters, forKeyword: AEKeyword(keyDirectObject))
+                        result = script.executeAppleEvent(event, error: &errorInfo)
+                    } else {
+                        result = script.executeAndReturnError(&errorInfo)
+                    }
                     if errorInfo != nil {
                         continuation.resume(throwing: ExecutionError(errorInfo: errorInfo))
                     } else {

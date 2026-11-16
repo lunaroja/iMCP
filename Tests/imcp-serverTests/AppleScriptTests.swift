@@ -55,6 +55,16 @@ final class AppleScriptTests: XCTestCase {
         }
     }
 
+    func testHandlerReceivesInputAsData() async throws {
+        let text = "quotes: \" and \\ and emoji 📝\nreturn false"
+        let result = try await NSAppleScript.execute(
+            "on echoText(theText)\nreturn theText\nend echoText",
+            handler: "echoText",
+            arguments: [text]
+        )
+        XCTAssertEqual(result.stringValue, text)
+    }
+
     func testScriptErrorsKeepTheirNumberAndMessage() async {
         do {
             _ = try await NSAppleScript.execute("error \"Not allowed.\" number -1743")
@@ -71,6 +81,63 @@ final class AppleScriptTests: XCTestCase {
             XCTFail("expected a compile error")
         } catch {
             XCTAssertNotNil((error as? NSAppleScript.ExecutionError)?.number)
+        }
+    }
+
+    func testAuthorizationCanRejectQueuedScript() async throws {
+        struct Rejected: Error {}
+        do {
+            _ = try await NSAppleScript.execute("return true", beforeExecution: { throw Rejected() })
+            XCTFail("expected authorization failure")
+        } catch {
+            XCTAssertTrue(error is Rejected)
+        }
+    }
+
+    func testNotesBodyEscapesCallerText() {
+        XCTAssertEqual(
+            NotesCreation.noteBody(title: "A < B", text: "hello & goodbye\r\n<img src=x> 📝"),
+            "<div>A &lt; B</div><div>hello &amp; goodbye<br>&lt;img src=x&gt; 📝</div>"
+        )
+    }
+
+    func testNotesCreationToolsDefaultToDisabled() async throws {
+        let inputs: [(Tool, [String: Value])] = [
+            (
+                NotesCreation.noteTool,
+                [
+                    "account": "Synthetic Account",
+                    "folderPath": ["Synthetic Folder"],
+                    "title": "Synthetic Note",
+                    "text": "Synthetic text",
+                ]
+            ),
+            (NotesCreation.folderTool, ["account": "Synthetic Account", "name": "Synthetic Folder"]),
+        ]
+        for (tool, arguments) in inputs {
+            do {
+                _ = try await tool(arguments)
+                XCTFail("expected the Notes creation tool to be disabled")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, "This Notes creation tool is off in iMCP settings.")
+            }
+        }
+    }
+
+    func testNotesDestinationComparisonIsExact() async throws {
+        let match = try await NSAppleScript.execute(
+            NotesCreation.script,
+            handler: "exactName",
+            arguments: ["Café - [test]", "Café - [test]"]
+        )
+        XCTAssertTrue(match.booleanValue)
+        for different in ["café - [test]", "Cafe - [test]", "Café -[test]", "Café – [test]"] {
+            let mismatch = try await NSAppleScript.execute(
+                NotesCreation.script,
+                handler: "exactName",
+                arguments: ["Café - [test]", different]
+            )
+            XCTAssertFalse(mismatch.booleanValue)
         }
     }
 }

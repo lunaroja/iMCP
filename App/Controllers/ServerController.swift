@@ -169,7 +169,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Notes",
-                summary: "Search notes by text, folder, or date, and read them as Markdown.",
+                summary: "Search and read notes as Markdown, or opt in to creating notes and folders.",
                 iconName: "note.text",
                 color: .yellow,
                 service: NotesService.shared,
@@ -383,7 +383,12 @@ final class ServerController: ObservableObject {
     // MARK: - Disabled Tools Management
     var disabledTools: Set<String> {
         get {
-            (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            var tools = (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            for name in NotesCreation.toolNames
+            where !UserDefaults.standard.bool(forKey: NotesCreation.enabledKey(for: name)) {
+                tools.insert(name)
+            }
+            return tools
         }
         set {
             objectWillChange.send()
@@ -404,6 +409,9 @@ final class ServerController: ObservableObject {
             tools.remove(name)
         } else {
             tools.insert(name)
+        }
+        if NotesCreation.toolNames.contains(name) {
+            UserDefaults.standard.set(enabled, forKey: NotesCreation.enabledKey(for: name))
         }
         disabledTools = tools
     }
