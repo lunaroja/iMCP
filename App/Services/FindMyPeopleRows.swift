@@ -35,7 +35,7 @@ enum FindMyPeopleRows {
     }
 
     static func match(lines: [Line], person: String) -> Match? {
-        let trustedLines = lines.filter { $0.confidence >= 0.8 }
+        let trustedLines = lines.filter { $0.confidence >= 0.8 }.sorted { $0.bounds.minY < $1.bounds.minY }
         guard
             let people = trustedLines.first(where: { $0.text == "People" && $0.bounds.midY < 180 }),
             let devices = trustedLines.first(where: {
@@ -54,28 +54,50 @@ enum FindMyPeopleRows {
         }
         let matches = sidebar.filter { normalizedName($0.text) == normalizedName(person) }
         guard matches.count == 1, let name = matches.first, name.confidence >= 0.8 else { return nil }
-        let details = sidebar.filter {
-            abs($0.bounds.minX - name.bounds.minX) <= 6
-                && $0.bounds.minY >= name.bounds.maxY - 2
-                && $0.bounds.minY <= name.bounds.maxY + 9
+        func nextLine(after line: Line) -> Line? {
+            let candidates = sidebar.filter {
+                abs($0.bounds.minX - name.bounds.minX) <= 6
+                    && $0.bounds.minY >= line.bounds.maxY - 2
+                    && $0.bounds.minY <= line.bounds.maxY + 9
+            }
+            guard candidates.count == 1, let candidate = candidates.first, candidate.confidence >= 0.8 else {
+                return nil
+            }
+            return candidate
         }
-        guard details.count == 1, let detail = details.first, detail.confidence >= 0.8,
-            let result = result(for: detail.text)
+        guard let detail = nextLine(after: name) else { return nil }
+        if let result = result(for: detail.text) {
+            return Match(name: name, detail: detail, tabs: tabs, result: result)
+        }
+
+        // In the selected People row, Find My displays Nearby, the precise
+        // place, and the freshness as separate lines. Return only the badge.
+        guard detail.text == "Nearby", let address = nextLine(after: detail),
+            !address.text.isEmpty, let age = nextLine(after: address),
+            let result = result(place: "Nearby", age: age.text)
         else { return nil }
-        return Match(name: name, detail: detail, tabs: tabs, result: result)
+        return Match(name: name, detail: age, tabs: tabs, result: result)
     }
 
     private static func result(for text: String) -> [String: String]? {
-        if ["No location found", "Location not available"].contains(text) {
+        switch text.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "paused":
+            return ["status": "paused"]
+        case "no location found", "location not available":
             return ["status": "unavailable"]
+        default:
+            break
         }
         let fields = text.split(omittingEmptySubsequences: false) { $0 == "•" || $0 == "·" }
             .map { $0.trimmingCharacters(in: .whitespaces) }
         guard fields.count == 2, !fields[0].isEmpty else { return nil }
-        let age = fields[1]
+        return result(place: fields[0], age: fields[1])
+    }
+
+    private static func result(place: String, age: String) -> [String: String]? {
         // Find My can keep the previous place on the row while sharing is paused.
         if age == "Paused" {
-            return ["status": "unavailable"]
+            return ["status": "paused"]
         }
         let agePattern =
             #"\A[0-9]{1,4} (?:sec\.?|secs\.?|seconds?|min\.?|mins\.?|minutes?|hr\.?|hrs\.?|hours?|days?|weeks?) ago\z"#
@@ -84,9 +106,8 @@ enum FindMyPeopleRows {
                 || age.range(of: agePattern, options: .regularExpression) != nil
         else { return nil }
 
-        let location = fields[0]
-        if coarseLabels.contains(location) || isCityAndRegion(location) {
-            return ["status": "reported", "place": location, "lastSeen": age]
+        if coarseLabels.contains(place) || isCityAndRegion(place) {
+            return ["status": "reported", "place": place, "lastSeen": age]
         }
         return ["status": "place_withheld", "lastSeen": age]
     }

@@ -751,8 +751,12 @@ Call `find_my_person` with the exact approved name as `person`. iMCP captures on
 Find My window and reads the visible sidebar locally. Confirm the captured tab
 and row in the iMCP preview. The result can contain a built-in label (Home, Work,
 School, or Nearby) or a U.S. city and state, plus Apple's displayed last-seen age.
-Address-like or unrecognized place text is withheld. A client may retain the
-result. iMCP does not save captures, recognized rows, or lookup history.
+A selected row that shows a separate Nearby badge, address, and age returns
+Nearby and the age. Address-like or unrecognized place text is withheld. A row
+that shows **Paused** returns `{"status":"paused"}`. An explicit no-location row returns
+`{"status":"unavailable"}`. Both contain only the status, even if the native
+paused row displays an earlier place. A client may retain the result. iMCP does
+not save captures, recognized rows, or lookup history.
 
 The prototype uses manual tab selection and confirmation for every call. Use
 only synthetic data with unsigned debug builds.

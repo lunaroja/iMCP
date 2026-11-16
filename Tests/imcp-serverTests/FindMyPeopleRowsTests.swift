@@ -34,19 +34,40 @@ final class FindMyPeopleRowsTests: XCTestCase {
     }
 
     func testUnavailableHasNoPlaceOrAge() {
-        XCTAssertEqual(
-            match(tabs + [Self.line("Test Person"), Self.line("No location found", y: 121)]),
-            ["status": "unavailable"]
-        )
-    }
-
-    func testPausedSharingWithholdsThePreviousPlaceAndAge() {
-        for separator in ["•", "·"] {
+        for detail in ["No Location Found", "Location Not Available"] {
             XCTAssertEqual(
-                match(tabs + [Self.line("Test Person"), Self.line("Springfield, IL \(separator) Paused", y: 121)]),
+                match(tabs + [Self.line("Test Person"), Self.line(detail, y: 121)]),
                 ["status": "unavailable"]
             )
         }
+    }
+
+    func testPausedSharingWithholdsThePreviousPlaceAndAge() {
+        for detail in ["Paused", "Springfield, IL • Paused", "Springfield, IL · Paused"] {
+            XCTAssertEqual(
+                match(tabs + [Self.line("Test Person"), Self.line(detail, y: 121)]),
+                ["status": "paused"]
+            )
+        }
+    }
+
+    func testExpandedSelectedRowReturnsOnlyNearbyAndFreshness() {
+        let row =
+            tabs + [
+                Self.line("Test Person"),
+                Self.line("Nearby", y: 121),
+                Self.line("456 Example St, Springfield", y: 138),
+            ]
+        XCTAssertEqual(
+            match(row + [Self.line("Live", y: 155)]),
+            ["status": "reported", "place": "Nearby", "lastSeen": "Live"]
+        )
+        XCTAssertEqual(
+            match(row + [Self.line("Paused", y: 155)]),
+            ["status": "paused"]
+        )
+        XCTAssertNil(match(row + [Self.line("Live", y: 189)]))
+        XCTAssertNil(match(row + [Self.line("Live", x: 124, y: 155)]))
     }
 
     func testMissingSidebarPartialNameAndMapLabelAreRejected() {

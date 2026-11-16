@@ -14,7 +14,7 @@ final class FindMyPeopleService: Service {
         Tool(
             name: Self.toolName,
             description:
-                "Read one locally approved person's shared Find My location. Open Find My on People with the row visible and confirm the preview on this Mac.",
+                "Read one locally approved person's shared Find My location. Open Find My on People with the row visible and confirm the preview on this Mac. Paused sharing and unavailable locations return distinct statuses without place or age.",
             inputSchema: .object(
                 properties: ["person": .string(description: "Exact approved name as shown in Find My.")],
                 required: ["person"],
@@ -116,7 +116,9 @@ final class FindMyPeopleService: Service {
             guard let candidate = observation.topCandidates(1).first else { return [] }
             let text = candidate.string
             let pills = text.split(whereSeparator: \.isWhitespace)
-            if pills == ["People", "Devices", "Items"] || pills == ["Me", "People", "Devices", "Items"] {
+            if pills == ["People", "Devices", "Items"] || pills == ["People", "Devices", "Items", "Me"]
+                || pills == ["Me", "People", "Devices", "Items"]
+            {
                 return pills.compactMap { pill in
                     guard let range = text.range(of: pill),
                         let box = try? candidate.boundingBox(for: range)?.boundingBox
@@ -183,10 +185,16 @@ final class FindMyPeopleService: Service {
             view.heightAnchor.constraint(equalToConstant: CGFloat(image.height) / 2).isActive = true
             stack.addArrangedSubview(view)
         }
-        let summary = [preview.result["place"], preview.result["lastSeen"]].compactMap { $0 }.joined(separator: " · ")
-        stack.addArrangedSubview(
-            NSTextField(labelWithString: summary.isEmpty ? "No location will be shared." : summary)
-        )
+        let summary: String
+        switch preview.result["status"] {
+        case "paused":
+            summary = "Location sharing is paused. Only the paused status will be shared."
+        case "unavailable":
+            summary = "Location is unavailable. Only the unavailable status will be shared."
+        default:
+            summary = [preview.result["place"], preview.result["lastSeen"]].compactMap { $0 }.joined(separator: " · ")
+        }
+        stack.addArrangedSubview(NSTextField(labelWithString: summary))
         stack.frame.size = stack.fittingSize
         alert.accessoryView = stack
 
