@@ -40,6 +40,15 @@ final class FindMyPeopleRowsTests: XCTestCase {
         )
     }
 
+    func testPausedSharingWithholdsThePreviousPlaceAndAge() {
+        for separator in ["•", "·"] {
+            XCTAssertEqual(
+                match(tabs + [Self.line("Test Person"), Self.line("Springfield, IL \(separator) Paused", y: 121)]),
+                ["status": "unavailable"]
+            )
+        }
+    }
+
     func testMissingSidebarPartialNameAndMapLabelAreRejected() {
         let detail = Self.line("Home • Now", y: 121)
         XCTAssertNil(match([Self.line("Test Person"), detail]))

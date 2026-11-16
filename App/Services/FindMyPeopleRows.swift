@@ -73,6 +73,10 @@ enum FindMyPeopleRows {
             .map { $0.trimmingCharacters(in: .whitespaces) }
         guard fields.count == 2, !fields[0].isEmpty else { return nil }
         let age = fields[1]
+        // Find My can keep the previous place on the row while sharing is paused.
+        if age == "Paused" {
+            return ["status": "unavailable"]
+        }
         let agePattern =
             #"\A[0-9]{1,4} (?:sec\.?|secs\.?|seconds?|min\.?|mins\.?|minutes?|hr\.?|hrs\.?|hours?|days?|weeks?) ago\z"#
         guard
