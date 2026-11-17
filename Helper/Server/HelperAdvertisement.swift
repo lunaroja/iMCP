@@ -23,10 +23,12 @@ final class HelperAdvertisement {
             self?.finish(DNSServiceErrorType(kDNSServiceErr_Timeout))
         }
         defer { timeout.cancel() }
+        // Other helpers can be running on this Mac during pairing or migration.
+        let processID = ProcessInfo.processInfo.processIdentifier
         // A TXT record is a sequence of length-prefixed key=value strings.
         let record = [
             "\(HomeHelperPairing.protocolVersionTXTKey)=\(HomeHelperPairing.protocolVersion)",
-            "\(HomeHelperPairing.processIDTXTKey)=\(ProcessInfo.processInfo.processIdentifier)",
+            "\(HomeHelperPairing.processIDTXTKey)=\(processID)",
             pairing ? "\(HomeHelperPairing.pairingTXTKey)=1" : nil,
         ].compactMap { $0 }.flatMap { [UInt8($0.utf8.count)] + Array($0.utf8) }
         try await withCheckedThrowingContinuation { continuation in
@@ -35,7 +37,7 @@ final class HelperAdvertisement {
                 &reference,
                 0,
                 kDNSServiceInterfaceIndexLocalOnly,
-                "iMCP Helper",
+                "iMCP Helper \(processID)",
                 HomeHelperPairing.serviceType,
                 "local.",
                 "localhost.",
