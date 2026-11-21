@@ -78,6 +78,7 @@ enum MessageSend {
 
         let unattended = allowsUnattended()
         if !unattended {
+            guard NSApp.modalWindow == nil else { throw SendError.busy }
             guard confirm(recipient: recipient, text: text) else { throw SendError.cancelled }
         }
         try Task.checkCancellation()
@@ -140,12 +141,18 @@ enum MessageSend {
         alert.accessoryView = scrollView
 
         NSApp.activate()
-        let timeout = Timer(timeInterval: 60, repeats: false) { _ in
-            MainActor.assumeIsolated { NSApp.abortModal() }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(60))
+        let timeout = Timer(timeInterval: 1, repeats: true) { [weak alert] _ in
+            MainActor.assumeIsolated {
+                if clock.now >= deadline, let alert, NSApp.modalWindow === alert.window {
+                    NSApp.abortModal()
+                }
+            }
         }
         RunLoop.main.add(timeout, forMode: .modalPanel)
         defer { timeout.invalidate() }
-        return alert.runModal() == .alertSecondButtonReturn
+        return alert.runModal() == .alertSecondButtonReturn && clock.now < deadline
     }
 
     // All arguments arrive as Apple event descriptors, outside the script source.
@@ -174,7 +181,7 @@ enum MessageSend {
             switch self {
             case .invalidInput: "Use an existing one-to-one iMessage chat ID and nonempty plain text."
             case .disabled: "iMessage sending is off in iMCP settings."
-            case .busy: "An iMessage send is already awaiting confirmation or completion."
+            case .busy: "Another iMessage send or dialog is already open."
             case .cancelled: "The send was cancelled or its confirmation expired."
             case .authorizationChanged: "Permission to send without confirmation was removed before sending."
             case .permission: "Allow iMCP to control Messages in Privacy & Security → Automation."
