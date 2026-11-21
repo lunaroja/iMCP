@@ -1,5 +1,34 @@
 import XCTest
 
+final class FindMyWindowWorkTests: XCTestCase {
+    @MainActor
+    func testTimedOutWorkKeepsItsSlotUntilItReturns() async {
+        let work = FindMyWindowWork()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+
+        do {
+            _ = try await work.run(timeout: .milliseconds(50)) {
+                await withCheckedContinuation { continuation in
+                    DispatchQueue.global().async {
+                        release.wait()
+                        continuation.resume(returning: "late result")
+                    }
+                }
+            }
+            XCTFail("an unresponsive worker returned a result")
+        } catch {
+            XCTAssertEqual(error as? FindMyWindowWork.WorkError, .timedOut)
+        }
+        do {
+            _ = try await work.run(timeout: .seconds(1)) { "second worker" }
+            XCTFail("a second worker started before the first returned")
+        } catch {
+            XCTAssertEqual(error as? FindMyWindowWork.WorkError, .busy)
+        }
+    }
+}
+
 final class FindMyPeopleRowsTests: XCTestCase {
     private let tabs = [
         FindMyPeopleRowsTests.line("People", x: 80, y: 65),

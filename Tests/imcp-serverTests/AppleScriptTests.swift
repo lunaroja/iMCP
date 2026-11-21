@@ -65,6 +65,30 @@ final class AppleScriptTests: XCTestCase {
         XCTAssertEqual(result.stringValue, text)
     }
 
+    func testCancellingDuringAuthorizationPreventsExecution() async {
+        let entered = expectation(description: "The script reached its pre-execution check")
+        let release = DispatchSemaphore(value: 0)
+        let script = Task {
+            try await NSAppleScript.execute(
+                "return true",
+                beforeExecution: {
+                    entered.fulfill()
+                    release.wait()
+                }
+            ).booleanValue
+        }
+        await fulfillment(of: [entered], timeout: 5)
+        script.cancel()
+        release.signal()
+
+        do {
+            _ = try await script.value
+            XCTFail("the cancelled script ran")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+    }
+
     func testScriptErrorsKeepTheirNumberAndMessage() async {
         do {
             _ = try await NSAppleScript.execute("error \"Not allowed.\" number -1743")

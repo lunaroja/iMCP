@@ -186,7 +186,8 @@ enum NotesCreation {
 
                     if toolName is "notes_create" then
                         if (count pathComponents) is 0 then return {"folder"}
-                        set newItem to make new note at destination with properties {name:itemName, body:noteBody}
+                        -- Notes derives the title from the first line of the body.
+                        set newItem to make new note at destination with properties {body:noteBody}
                     else if toolName is "notes_folders_create" then
                         if (count my matchingFolders(destination, itemName)) is not 0 then return {"exists"}
                         set newItem to make new folder at destination with properties {name:itemName}

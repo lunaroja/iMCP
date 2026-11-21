@@ -208,6 +208,10 @@ extension NSAppleScript {
                         continuation.resume(throwing: error)
                         return
                     }
+                    if isCancelled.withLock({ $0 }) {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
                     let result: NSAppleEventDescriptor
                     if let handler {
                         let parameters = NSAppleEventDescriptor.list()

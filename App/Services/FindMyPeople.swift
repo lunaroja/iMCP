@@ -9,6 +9,7 @@ final class FindMyPeopleService: Service {
     static let personKey = "findMyPeopleApprovedName"
 
     @MainActor private static var lookupInProgress = false
+    @MainActor private static let windowWork = FindMyWindowWork()
 
     var tools: [Tool] {
         Tool(
@@ -43,7 +44,16 @@ final class FindMyPeopleService: Service {
         lookupInProgress = true
         defer { lookupInProgress = false }
 
-        let preview = try await readWindow(person: approved)
+        let preview: Preview
+        do {
+            preview = try await windowWork.run(timeout: .seconds(10)) {
+                try await readWindow(person: approved)
+            }
+        } catch FindMyWindowWork.WorkError.busy {
+            throw LookupError.busy
+        } catch FindMyWindowWork.WorkError.timedOut {
+            throw LookupError.timedOut
+        }
         try Task.checkCancellation()
         guard isEnabled(settings),
             settings.string(forKey: personKey) == approved
@@ -99,6 +109,8 @@ final class FindMyPeopleService: Service {
             )
         } catch let error as LookupError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw LookupError.window
         }
@@ -213,7 +225,7 @@ final class FindMyPeopleService: Service {
     }
 
     private enum LookupError: String, LocalizedError {
-        case notApproved, permission, busy, window, row, cancelled
+        case notApproved, permission, busy, window, row, cancelled, timedOut
 
         var errorDescription: String? {
             switch self {
@@ -223,6 +235,7 @@ final class FindMyPeopleService: Service {
             case .window: "Open one Find My window in an unlocked desktop session."
             case .row: "Open People and make the approved row fully visible. iMCP could not read it reliably."
             case .cancelled: "Find My lookup was not confirmed."
+            case .timedOut: "Find My window capture or recognition timed out."
             }
         }
     }

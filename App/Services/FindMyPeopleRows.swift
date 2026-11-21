@@ -1,5 +1,57 @@
 import Foundation
 
+/// A deadline bounds the tool call even if capture or Vision has not returned.
+/// Keep the worker slot occupied until the private image is no longer in use.
+@MainActor
+final class FindMyWindowWork {
+    enum WorkError: Error, Equatable {
+        case busy, timedOut
+    }
+
+    private var isWorking = false
+
+    func run<Output: Sendable>(
+        timeout: Duration,
+        operation: @escaping @Sendable () async throws -> Output
+    ) async throws -> Output {
+        try Task.checkCancellation()
+        guard !isWorking else { throw WorkError.busy }
+        isWorking = true
+
+        let (results, output) = AsyncThrowingStream<Output, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let worker = Task.detached(priority: .userInitiated) {
+            do {
+                let result = try await operation()
+                await self.workerFinished()
+                output.yield(result)
+                output.finish()
+            } catch {
+                await self.workerFinished()
+                output.finish(throwing: error)
+            }
+        }
+        let deadline = Task {
+            do {
+                try await Task.sleep(for: timeout)
+                output.finish(throwing: WorkError.timedOut)
+            } catch {}
+        }
+        defer {
+            deadline.cancel()
+            worker.cancel()
+        }
+
+        var iterator = results.makeAsyncIterator()
+        guard let result = try await iterator.next() else { throw CancellationError() }
+        try Task.checkCancellation()
+        return result
+    }
+
+    private func workerFinished() {
+        isWorking = false
+    }
+}
+
 enum FindMyPeopleRows {
     private static let coarseLabels: Set<String> = ["Home", "Work", "School", "Nearby"]
 
