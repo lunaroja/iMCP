@@ -127,6 +127,36 @@ final class ClientCredentialsTests: XCTestCase {
         )
     }
 
+    func testAppleHomeScopeRequiresTheDedicatedCredentialAndFollowsRevocation() throws {
+        let store = makeStore()
+        let (_, selected) = try store.issue(name: "Home", trusted: true, homeOnly: true)
+        let (_, general) = try store.issue(name: "Home", trusted: true)
+        let (_, untrusted) = try store.issue(name: "Home", trusted: false, homeOnly: true)
+        let selectedConnection = UUID()
+        let generalConnection = UUID()
+        let untrustedConnection = UUID()
+        var sessions = CredentialSessions()
+        sessions.add(selectedConnection, credentialID: selected.id)
+        sessions.add(generalConnection, credentialID: general.id)
+        sessions.add(untrustedConnection, credentialID: untrusted.id)
+
+        func scope(_ id: String?, on connection: UUID) -> ClientServiceScope {
+            store.serviceScope(presentedCredentialID: id, connectionID: connection, sessions: sessions)
+        }
+
+        store.reload()
+        XCTAssertTrue(scope(selected.id, on: selectedConnection).allows(isHomeService: true))
+        XCTAssertFalse(scope(selected.id, on: selectedConnection).allows(isHomeService: false))
+        XCTAssertFalse(scope(selected.id, on: generalConnection).allows(isHomeService: true))
+        XCTAssertFalse(scope(untrusted.id, on: untrustedConnection).allows(isHomeService: true))
+        XCTAssertFalse(scope(nil, on: selectedConnection).allows(isHomeService: true))
+        XCTAssertTrue(scope(general.id, on: generalConnection).allows(isHomeService: false))
+
+        try store.revoke(id: selected.id)
+        XCTAssertFalse(scope(selected.id, on: selectedConnection).allows(isHomeService: true))
+        XCTAssertFalse(scope(selected.id, on: selectedConnection).allows(isHomeService: false))
+    }
+
     func testUnattendedSendsRequireTheSelectedCredentialOnTheConnection() throws {
         let store = makeStore()
         let (_, selected) = try store.issue(name: "Same name", trusted: true)

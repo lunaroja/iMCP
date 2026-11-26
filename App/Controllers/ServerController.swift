@@ -264,7 +264,8 @@ final class ServerController: ObservableObject {
     @AppStorage("captureEnabled") private var captureEnabled = false
     @AppStorage("contactsEnabled") private var contactsEnabled = false
     @AppStorage(FindMyPeopleService.enabledKey) private var findMyPeopleEnabled = false
-    @AppStorage("homeEnabled") private var homeEnabled = false
+    // Older builds do not enforce the dedicated credential restriction.
+    @AppStorage("scopedHomeEnabled") private var homeEnabled = false
     @AppStorage("locationEnabled") private var locationEnabled = false
     @AppStorage("mapsEnabled") private var mapsEnabled = true  // Default enabled
     @AppStorage("mailEnabled") private var mailEnabled = false
@@ -346,6 +347,14 @@ final class ServerController: ObservableObject {
         guard supportsUnattendedMessageSends else { return }
         objectWillChange.send()
         try credentials.setUnattendedMessageSends(allowed, for: client.id)
+    }
+
+    func createHomeCredential() throws {
+        guard KeychainClientRecordStorage.usesDataProtectionKeychain else { return }
+        let name = "Apple Home"
+        let issued = try credentials.issue(name: name, trusted: true, homeOnly: true)
+        objectWillChange.send()
+        showNewCredential(issued.credential, clientName: name)
     }
 
     /// Revokes the credential of a trusted client and closes its connections.
@@ -486,7 +495,7 @@ final class ServerController: ObservableObject {
             request: entry.request,
             enabledServiceNames:
                 computedServiceConfigs
-                .filter { $0.binding.wrappedValue }
+                .filter { $0.binding.wrappedValue && !($0.service is HomeService) }
                 .map { $0.name },
             onApprove: { alwaysTrust in
                 self.finishApproval(key: key, approved: true, alwaysTrust: alwaysTrust)
@@ -637,6 +646,15 @@ final class ServerController: ObservableObject {
             await networkManager.setMessageSendAuthorization { [weak self] connectionID, presentedCredentialID in
                 guard let self, self.supportsUnattendedMessageSends else { return false }
                 return self.credentials.allowsUnattendedMessageSends(
+                    presentedCredentialID: presentedCredentialID,
+                    connectionID: connectionID,
+                    sessions: self.credentialSessions
+                )
+            }
+            await networkManager.setClientServiceScope { [weak self] connectionID, presentedCredentialID in
+                guard let self else { return .blocked }
+                guard KeychainClientRecordStorage.usesDataProtectionKeychain else { return .general }
+                return self.credentials.serviceScope(
                     presentedCredentialID: presentedCredentialID,
                     connectionID: connectionID,
                     sessions: self.credentialSessions
@@ -1039,6 +1057,7 @@ actor ServerNetworkManager {
     private var connectionClosedHandler: ConnectionClosedHandler?
 
     private var messageSendAuthorization: (@MainActor @Sendable (UUID, String?) -> Bool)?
+    private var clientServiceScope: (@MainActor @Sendable (UUID, String?) -> ClientServiceScope)?
 
     private let services = ServiceRegistry.services
     private var serviceBindings: [String: Binding<Bool>] = [:]
@@ -1051,6 +1070,10 @@ actor ServerNetworkManager {
 
     func setMessageSendAuthorization(_ handler: @escaping @MainActor @Sendable (UUID, String?) -> Bool) {
         messageSendAuthorization = handler
+    }
+
+    func setClientServiceScope(_ handler: @escaping @MainActor @Sendable (UUID, String?) -> ClientServiceScope) {
+        clientServiceScope = handler
     }
 
     func setConnectionClosedHandler(_ handler: @escaping ConnectionClosedHandler) {
@@ -1344,6 +1367,7 @@ actor ServerNetworkManager {
         gate: ConnectionApprovalGate
     ) async {
         let authorize = messageSendAuthorization
+        let serviceScope = clientServiceScope
         let messageSend = MessageSend.makeTool {
             authorize?(connectionID, presentedCredentialID) == true
         }
@@ -1367,7 +1391,9 @@ actor ServerNetworkManager {
 
             var tools: [MCP.Tool] = []
             if await self.isEnabledState {
+                let scope = await serviceScope?(connectionID, presentedCredentialID) ?? .blocked
                 for service in await self.services {
+                    guard scope.allows(isHomeService: service is HomeService) else { continue }
                     let serviceId = String(describing: type(of: service))
 
                     // Read binding on the actor for consistency.
@@ -1435,7 +1461,9 @@ actor ServerNetworkManager {
                 )
             }
 
+            let scope = await serviceScope?(connectionID, presentedCredentialID) ?? .blocked
             for service in await self.services {
+                guard scope.allows(isHomeService: service is HomeService) else { continue }
                 let serviceId = String(describing: type(of: service))
 
                 // Read binding on the actor for consistency.

@@ -838,6 +838,11 @@ such as those returned by iMCP tools.
 
 ### iMCP Helper
 
+In **Settings → Clients**, create a dedicated Apple Home credential. That credential
+can call Apple Home tools when the Home service is enabled. Other clients and one-time
+approved connections cannot call Apple Home tools. Remove the dedicated client in
+**Settings → Clients** to revoke its credential and disconnect it.
+
 Apple doesn't make the HomeKit framework available to native macOS apps,
 only to Mac Catalyst apps.
 So the Home service runs in a separate Catalyst app,

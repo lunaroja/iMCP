@@ -107,6 +107,23 @@ struct ClientRecord: Codable, Equatable, Identifiable, Sendable {
     /// Only an explicit grant skips the native iMessage confirmation.
     /// Older Keychain records omit this field and continue requiring confirmation.
     var allowsUnattendedMessageSends: Bool? = nil
+    /// An explicit grant for the dedicated Apple Home client.
+    /// Other clients, including older records, cannot access Apple Home.
+    var isHomeOnly: Bool? = nil
+}
+
+enum ClientServiceScope: Sendable {
+    case general
+    case home
+    case blocked
+
+    func allows(isHomeService: Bool) -> Bool {
+        switch self {
+        case .general: !isHomeService
+        case .home: isHomeService
+        case .blocked: false
+        }
+    }
 }
 
 /// Persistent storage for ``ClientRecord`` values.
@@ -335,12 +352,19 @@ final class ClientCredentialStore {
     ///
     /// - Returns: The credential, which iMCP can't show again,
     ///   and the stored record.
-    func issue(name: String, trusted: Bool) throws -> (credential: String, record: ClientRecord) {
+    func issue(name: String, trusted: Bool, homeOnly: Bool = false) throws -> (credential: String, record: ClientRecord)
+    {
         let credential = ClientCredential.generate()
         guard let id = ClientCredential.identifier(for: credential) else {
             preconditionFailure("A generated credential has an identifier")
         }
-        let record = ClientRecord(id: id, name: name, issuedAt: now(), isTrusted: trusted)
+        let record = ClientRecord(
+            id: id,
+            name: name,
+            issuedAt: now(),
+            isTrusted: trusted,
+            isHomeOnly: homeOnly ? true : nil
+        )
         try storage.save(record)
         records[id] = record
         return (credential, record)
@@ -362,17 +386,38 @@ final class ClientCredentialStore {
         records[id] = record
     }
 
+    func serviceScope(
+        presentedCredentialID: String?,
+        connectionID: UUID,
+        sessions: CredentialSessions
+    ) -> ClientServiceScope {
+        guard let id = presentedCredentialID else { return .general }
+        guard sessions.connections[id]?.contains(connectionID) == true, let record = records[id]
+        else { return .blocked }
+        guard record.isHomeOnly == true else { return .general }
+        guard record.isTrusted else { return .blocked }
+        return .home
+    }
+
     /// Checks the current grant for the credential actually presented on this connection.
     func allowsUnattendedMessageSends(
         presentedCredentialID: String?,
         connectionID: UUID,
         sessions: CredentialSessions
     ) -> Bool {
+        trustedRecord(presentedCredentialID, on: connectionID, sessions: sessions)?.allowsUnattendedMessageSends == true
+    }
+
+    private func trustedRecord(
+        _ presentedCredentialID: String?,
+        on connectionID: UUID,
+        sessions: CredentialSessions
+    ) -> ClientRecord? {
         guard let id = presentedCredentialID,
             sessions.connections[id]?.contains(connectionID) == true,
             let record = records[id], record.isTrusted
-        else { return false }
-        return record.allowsUnattendedMessageSends == true
+        else { return nil }
+        return record
     }
 
     /// Deletes the record with `id`, so that its credential stops working.

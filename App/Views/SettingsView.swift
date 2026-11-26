@@ -192,6 +192,7 @@ struct ClientsSettingsView: View {
     @ObservedObject var serverController: ServerController
     @State private var isConfirmingRemoveAll = false
     @State private var isShowingSendGrantError = false
+    @State private var isShowingHomeGrantError = false
 
     private let serverCommand = Bundle.main.bundleURL
         .appendingPathComponent("Contents/MacOS/imcp-server")
@@ -224,6 +225,22 @@ struct ClientsSettingsView: View {
                     Text(serverCommand)
                         .textSelection(.enabled)
                 }
+
+                if serverController.supportsUnattendedMessageSends {
+                    LabeledContent {
+                        Button("Create Credential…") {
+                            do {
+                                try serverController.createHomeCredential()
+                            } catch {
+                                isShowingHomeGrantError = true
+                            }
+                        }
+                        .accessibilityLabel("Create Apple Home Credential")
+                    } label: {
+                        Text("Apple Home")
+                        Text("Creates a trusted client credential limited to Apple Home tools.")
+                    }
+                }
             }
 
             Section {
@@ -248,7 +265,10 @@ struct ClientsSettingsView: View {
                                 Text(client.name)
                                 Text("Trusted since \(client.issuedAt.formatted(date: .abbreviated, time: .shortened))")
                             }
-                            if serverController.supportsUnattendedMessageSends {
+                            if client.isHomeOnly == true {
+                                Text("Apple Home tools only")
+                                    .foregroundStyle(.secondary)
+                            } else if serverController.supportsUnattendedMessageSends {
                                 Toggle(
                                     "Allow iMessage sends without confirmation",
                                     isOn: Binding(
@@ -313,6 +333,11 @@ struct ClientsSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Clients")
         .alert("Couldn’t Change iMessage Permission", isPresented: $isShowingSendGrantError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("iMCP couldn’t update the client’s permission in Keychain.")
+        }
+        .alert("Couldn’t Change Apple Home Permission", isPresented: $isShowingHomeGrantError) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("iMCP couldn’t update the client’s permission in Keychain.")
