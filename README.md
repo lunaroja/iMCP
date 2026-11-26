@@ -683,6 +683,14 @@ leaves that log unreadable, so the newest messages were missing until then.
 If you granted `chat.db` with an earlier version, Messages keeps working from the last checkpoint;
 switch Messages off and on in the iMCP menu to grant the folder instead.
 
+For native iMessage threads, pass a message UUID as `threadRootId` alongside
+`chatId` to `messages_fetch`. The result is the subset of matching replies
+whose stored thread root belongs to that conversation. Each result includes
+`threadRoot.@id`. The root is the original thread message and can differ from
+the immediate parent. Tapbacks, edited and retracted rows, unresolved roots,
+and unsupported database formats are omitted. Usual time, participant, count
+and attachment options still apply.
+
 Attachment files are a separate matter.
 The sandbox walls off `~/Library/Messages/Attachments` from a grant on its parent folder,
 so reading message attachments (`messages_attachment_read`)

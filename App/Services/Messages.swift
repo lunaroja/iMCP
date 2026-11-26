@@ -165,6 +165,10 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
                     "query": .string(
                         description: "Search term to filter messages by content"
                     ),
+                    "threadRootId": .string(
+                        description:
+                            "With chatId, return only native iMessage replies whose stored thread root is this message @id in the same conversation. Results include threadRoot.@id. The root may differ from the immediate parent."
+                    ),
                     "isRead": .boolean(
                         description: "If true, fetch read messages; if false, unread incoming; if omitted, fetch all"
                     ),
@@ -229,6 +233,18 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
                 dateRange = lowerBound ..< max(lowerBound, upperBound)
             }
 
+            let threadRootID: String?
+            if let value = arguments["threadRootId"], !value.isNull {
+                guard let root = value.stringValue, UUID(uuidString: root) != nil,
+                    requestedChatID != nil
+                else {
+                    throw ArgumentError.invalid("threadRootId requires a message UUID and chatId")
+                }
+                threadRootID = root
+            } else {
+                threadRootID = nil
+            }
+
             let searchTerm = arguments["query"]?.stringValue
             let isReadFilter = arguments["isRead"]?.boolValue
             let limit = arguments["limit"]?.intValue
@@ -263,7 +279,16 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
                 limit: max(limit ?? defaultLimit, 1024)
             )
 
-            let fetched = try db.fetch(request)
+            var fetched = try db.fetch(request)
+            if let root = threadRootID, let chat = requestedChatID {
+                let replyIDs = try self.threadReplies(
+                    to: root,
+                    chat: chat.rawValue,
+                    candidates: fetched.map { $0.id.rawValue },
+                    in: access
+                )
+                fetched = fetched.filter { $0.chatID == chat && replyIDs.contains($0.id.rawValue) }
+            }
             // Attachments are listed in one query per page (chat.db joins them by message rowid).
             let attachmentsByMessage: [String: [[String: Value]]] =
                 includeAttachments
@@ -328,6 +353,9 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
                     "createdAt": .string(message.date.formatted(.iso8601)),
                     "isRead": .bool(message.isRead),
                 ]
+                if let threadRootID {
+                    object["threadRoot"] = ["@id": .string(threadRootID)]
+                }
                 if let readAt = message.readAt {
                     object["dateRead"] = .string(readAt.formatted(.iso8601))
                 }
@@ -404,6 +432,53 @@ final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
             return try self.readAttachment(id: id, maxBytes: maxBytes)
         }
         MessageSend.tool
+    }
+
+    /// Messages stores the original root on each reply, even for nested replies.
+    /// Restrict both joins to the requested conversation and ignore non-message events.
+    private func threadReplies(
+        to root: String,
+        chat: String,
+        candidates: [String],
+        in access: DatabaseAccess
+    ) throws -> Set<String> {
+        guard !candidates.isEmpty else { return [] }
+        let raw = try RawDatabase(access)
+        defer { raw.close() }
+        let required: Set<String> = [
+            "thread_originator_guid", "associated_message_type", "date_edited", "date_retracted",
+        ]
+        var columns: Set<String> = []
+        try raw.query("PRAGMA table_info(message)", bindings: []) { row in
+            if let column = RawDatabase.text(row, 1) { columns.insert(column) }
+        }
+        guard required.isSubset(of: columns) else { return [] }
+
+        var replies: Set<String> = []
+        for offset in stride(from: 0, to: candidates.count, by: 500) {
+            let chunk = Array(candidates[offset ..< min(offset + 500, candidates.count)])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            try raw.query(
+                """
+                SELECT reply.guid
+                FROM message AS root
+                JOIN chat_message_join AS root_link ON root_link.message_id = root.ROWID
+                JOIN chat ON chat.ROWID = root_link.chat_id
+                JOIN message AS reply ON reply.thread_originator_guid = root.guid
+                JOIN chat_message_join AS reply_link
+                    ON reply_link.message_id = reply.ROWID AND reply_link.chat_id = chat.ROWID
+                WHERE root.guid = ? AND chat.guid = ? AND reply.guid IN (\(placeholders))
+                    AND reply.guid <> root.guid
+                    AND root.service = 'iMessage' AND reply.service = 'iMessage'
+                    AND COALESCE(reply.associated_message_type, 0) = 0
+                    AND COALESCE(reply.date_edited, 0) = 0 AND COALESCE(reply.date_retracted, 0) = 0
+                """,
+                bindings: [root, chat] + chunk
+            ) { row in
+                if let id = RawDatabase.text(row, 0) { replies.insert(id) }
+            }
+        }
+        return replies
     }
 
     /// The attachments of the given messages (by guid), keyed by message guid, in chat.db
