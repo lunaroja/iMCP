@@ -851,6 +851,18 @@ can call Apple Home tools when the Home service is enabled. Other clients and on
 approved connections cannot call Apple Home tools. Remove the dedicated client in
 **Settings → Clients** to revoke its credential and disconnect it.
 
+Development-signed builds can bundle a managed HomeKit helper. Open iMCP and turn
+on Home. iMCP registers its bundled helper with macOS, which starts it on demand.
+The helper runs without an onscreen window. Approve the HomeKit system prompt
+if it appears. If macOS asks to allow the background item, enable iMCP in
+System Settings → General → Login Items & Extensions and turn Home on again.
+Disabling Home ends the connection and unregisters the managed helper.
+
+The bundled helper and iMCP authenticate each other over XPC using their Apple
+signing team and bundle identifiers. They use no pairing code. The existing
+access grants and Home client restrictions still apply within iMCP. The following
+standalone steps apply to builds that ship without the bundled helper.
+
 Apple doesn't make the HomeKit framework available to native macOS apps,
 only to Mac Catalyst apps.
 So the Home service runs in a separate Catalyst app,

@@ -20,6 +20,7 @@ import dnssd
 /// See `HomeHelperPairing` for how iMCP pairs with the helper.
 actor HomeService: Service, HomeBackend {
     static let shared = HomeService()
+    static let enabledKey = "scopedHomeEnabled"
 
     /// Thrown when iMCP isn't paired with the helper, or the helper rejects iMCP's key or code.
     enum PairingError: LocalizedError {
@@ -59,6 +60,7 @@ actor HomeService: Service, HomeBackend {
         "iMCP Helper doesn't match this version of iMCP. Quit iMCP Helper, then rebuild it with Scripts/install-helper.sh."
 
     private let log = Logger.service("home")
+    nonisolated let managed: ManagedHomeClient?
     private let helperURL: URL?
     private let keyStore: any HomeHelperKeyStore
     /// A key that iMCP sent while pairing, kept until the helper acknowledges it or a connection uses it,
@@ -84,6 +86,10 @@ actor HomeService: Service, HomeBackend {
             NSRunningApplication(processIdentifier: pid).map { !$0.isTerminated } ?? false
         }
     ) {
+        managed =
+            helperURL == nil
+            ? ManagedHome.service(in: Bundle.main.bundleURL)?.bundleIdentifier.flatMap(ManagedHomeClient.init)
+            : nil
         self.helperURL = helperURL
         self.keyStore = keyStore
         self.pendingKeyStore = pendingKeyStore
@@ -94,10 +100,19 @@ actor HomeService: Service, HomeBackend {
 
     nonisolated var tools: [Tool] { return HomeTools.tools(backend: self) }
 
-    var isActivated: Bool { authorized && connection?.state == .ready }
+    var isActivated: Bool {
+        get async {
+            if let managed { return await managed.isActivated }
+            return authorized && connection?.state == .ready
+        }
+    }
 
     func activate() async throws {
-        if isActivated { return }
+        if let managed {
+            try await managed.activate()
+            return
+        }
+        if await isActivated { return }
         if let connecting { return try await connecting.value }
         let task = Task { try await self.connect() }
         connecting = task
@@ -109,7 +124,7 @@ actor HomeService: Service, HomeBackend {
     /// Quits the running helper, then reconnects,
     /// which launches the chosen one.
     func useChosenHelper() async throws {
-        guard isActivated else { return }
+        guard await isActivated else { return }
         if let helperPID { try await quitHelper(pid: helperPID) }
         helperPID = nil
         try await connect()
@@ -185,6 +200,13 @@ actor HomeService: Service, HomeBackend {
     // MARK: - HomeBackend
 
     func call(_ tool: String, _ input: [String: Value]) async throws -> Value {
+        if let managed {
+            return try await managed.call(
+                tool,
+                input,
+                readOnly: tools.first(where: { $0.name == tool })?.annotations.readOnlyHint == true
+            )
+        }
         try await activate()
         guard let active = client else { throw HomeError("iMCP Helper is not connected.") }
         do { return try await forward(active, tool, input) } catch let error as HomeError { throw error } catch {
@@ -654,6 +676,7 @@ actor HomeService: Service, HomeBackend {
     /// Repeated opens share one pairing, so one result reconnects at most once.
     @MainActor
     func pairFromURL() async {
+        guard managed == nil else { return }
         if let pairing = Self.urlPairing {
             PairingWindow.bringToFront()
             return await pairing.value
@@ -674,6 +697,10 @@ actor HomeService: Service, HomeBackend {
     /// Returns false when the user cancels.
     @MainActor
     func activateAskingUser() async throws -> Bool {
+        if let managed {
+            try await managed.activate()
+            return true
+        }
         guard try promptForHelperIfMissing() else { return false }
         var message = "Enter the code shown in iMCP Helper's window."
         while true {

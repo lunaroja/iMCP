@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A40200000000000000000002 /* ../../App/Services/ManagedHomeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40100000000000000000002 /* ../../App/Services/ManagedHomeClient.swift */; };
+		A40200000000000000000001 /* ../../Shared/Home/ManagedHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40100000000000000000001 /* ../../Shared/Home/ManagedHome.swift */; };
 		158948D22D0E610E83A4433C /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B75D49165A453E912E36DBFE /* Sparkle */; };
 		76F80A6E3EDBFB02048A6ED8 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E0E66768348853754D32208C /* Cocoa.framework */; };
 		826C0834A5B647F8A918E54D /* ServiceLifecycle in Frameworks */ = {isa = PBXBuildFile; productRef = DCE061F8A68D0CD546D919E2 /* ServiceLifecycle */; };
@@ -107,6 +109,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A40100000000000000000002 /* ../../App/Services/ManagedHomeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/ManagedHomeClient.swift; sourceTree = "<group>"; };
+		A40100000000000000000001 /* ../../Shared/Home/ManagedHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../Shared/Home/ManagedHome.swift; sourceTree = "<group>"; };
 		6A5CFBBEC66BC8CDA9D65496 /* imcp-serverTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "imcp-serverTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		75E148EAC5AC8B3263C5AA13 /* ServiceGroupConfigurationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ServiceGroupConfigurationTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* iMCP Helper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = "iMCP Helper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -276,6 +280,8 @@
 			children = (
 				A40000000000000000000010 /* HomeProxyTests.swift */,
 				A40000000000000000000011 /* ../../App/Services/Home.swift */,
+				A40100000000000000000001 /* ../../Shared/Home/ManagedHome.swift */,
+				A40100000000000000000002 /* ../../App/Services/ManagedHomeClient.swift */,
 				A40000000000000000000019 /* ../../App/Services/HomeHelperLocator.swift */,
 				B13300000000000000000010 /* MusicTests.swift */,
 				B13300000000000000000011 /* ../../App/Services/Music.swift */,
@@ -602,6 +608,8 @@
 			files = (
 				A40000000000000000000020 /* HomeProxyTests.swift in Sources */,
 				A40000000000000000000021 /* ../../App/Services/Home.swift in Sources */,
+				A40200000000000000000001 /* ../../Shared/Home/ManagedHome.swift in Sources */,
+				A40200000000000000000002 /* ../../App/Services/ManagedHomeClient.swift in Sources */,
 				A40000000000000000000029 /* ../../App/Services/HomeHelperLocator.swift in Sources */,
 				B13300000000000000000020 /* MusicTests.swift in Sources */,
 				B13300000000000000000021 /* ../../App/Services/Music.swift in Sources */,

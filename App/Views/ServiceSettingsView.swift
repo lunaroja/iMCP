@@ -31,7 +31,11 @@ struct ServiceSettingsView: View {
             }
 
             if config.service is HomeService {
-                HomeHelperSection(isHomeOn: isOn)
+                if HomeService.shared.managed != nil {
+                    LabeledContent("HomeKit", value: "Managed by iMCP")
+                } else {
+                    HomeHelperSection(isHomeOn: isOn)
+                }
             }
 
             if config.service is FindMyPeopleService {

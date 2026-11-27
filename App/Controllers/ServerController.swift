@@ -265,7 +265,7 @@ final class ServerController: ObservableObject {
     @AppStorage("contactsEnabled") private var contactsEnabled = false
     @AppStorage(FindMyPeopleService.enabledKey) private var findMyPeopleEnabled = false
     // Older builds do not enforce the dedicated credential restriction.
-    @AppStorage("scopedHomeEnabled") private var homeEnabled = false
+    @AppStorage(HomeService.enabledKey) private var homeEnabled = false
     @AppStorage("locationEnabled") private var locationEnabled = false
     @AppStorage("mapsEnabled") private var mapsEnabled = true  // Default enabled
     @AppStorage("mailEnabled") private var mailEnabled = false
@@ -481,7 +481,7 @@ final class ServerController: ObservableObject {
                 // so bring iMCP back to the front.
                 NSApp.activate(ignoringOtherApps: true)
             }
-            await networkManager.updateServiceBindings(self.currentServiceBindings)
+            await self.updateServiceBindings()
         }
     }
 
@@ -662,6 +662,12 @@ final class ServerController: ObservableObject {
             }
             await self.networkManager.start()
             self.updateServerStatus("Running")
+            if HomeService.shared.managed != nil, self.homeEnabled,
+                UserDefaults.standard.object(forKey: "isEnabled") as? Bool ?? true
+            {
+                // Start a previously enabled bundled Home service with iMCP.
+                try? await HomeService.shared.activate()
+            }
         }
     }
 
@@ -669,6 +675,7 @@ final class ServerController: ObservableObject {
     /// Called by the UI when service toggles change.
     func updateServiceBindings() async {
         await networkManager.updateServiceBindings(currentServiceBindings)
+        if !homeEnabled { await HomeService.shared.managed?.stop() }
     }
 
     func startServer() async {
@@ -683,6 +690,7 @@ final class ServerController: ObservableObject {
 
     func setEnabled(_ enabled: Bool) async {
         await networkManager.setEnabled(enabled)
+        if !enabled { await HomeService.shared.managed?.stop() }
         updateServerStatus(enabled ? "Running" : "Disabled")
     }
 

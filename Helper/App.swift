@@ -6,6 +6,64 @@ import UIKit
 import UniformTypeIdentifiers
 
 @main
+enum HelperEntryPoint {
+    static func main() {
+        if Bundle.main.object(forInfoDictionaryKey: ManagedHome.hostKey) != nil {
+            _ = UIApplicationMain(
+                CommandLine.argc,
+                CommandLine.unsafeArgv,
+                nil,
+                NSStringFromClass(ManagedHomeAppDelegate.self)
+            )
+        } else {
+            HelperApp.main()
+        }
+    }
+}
+
+private final class ManagedHomeAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        ManagedHomeServer.start()
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting session: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: session.role)
+        configuration.delegateClass = ManagedHomeSceneDelegate.self
+        return configuration
+    }
+}
+
+private final class ManagedHomeSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // Catalyst creates a placeholder AppKit window even without a UIKit window.
+        Task { @MainActor in
+            guard
+                let application = (NSClassFromString("NSApplication") as AnyObject?)?
+                    .perform(NSSelectorFromString("sharedApplication"))?.takeUnretainedValue() as? NSObject
+            else { return }
+
+            // The native window can be attached just after the scene activates.
+            for _ in 0 ..< 20 {
+                let windows = application.value(forKey: "windows") as? [NSObject] ?? []
+                let visible = windows.filter { $0.value(forKey: "isVisible") as? Bool == true }
+                if !visible.isEmpty {
+                    for window in visible { window.perform(NSSelectorFromString("close")) }
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+        }
+    }
+}
+
 struct HelperApp: App {
     @StateObject private var runtime = HelperRuntime()
 
